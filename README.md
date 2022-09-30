@@ -32,7 +32,7 @@ supported
 results by a particular crawl.  If you want to use this feature, make sure to
 add `crawl_id` as a filterable attribute in Vectara
 - *--indexing-endpoint*: The Vectara indexing endpoint.  Defaults to
-`indexing.vectar.io`
+`indexing.vectara.io`
 - *--auth-url*: OAuth2 authentication URL.  Only required for accounts with
 custom authentication
 
