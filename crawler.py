@@ -97,7 +97,7 @@ if __name__ == "__main__":
     if args:
         auth_url = args.auth_url
         if auth_url == "":
-            auth_url = f"https://vectara-{args.customer_id}.auth.us-west-2.amazoncognito.com"
+            auth_url = f"https://vectara-prod-{args.customer_id}.auth.us-west-2.amazoncognito.com"
 
         appclient_id = args.appclient_id
         appclient_secret = args.appclient_secret
