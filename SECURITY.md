@@ -1,1 +1,9 @@
-Add links to security and trust center.  Include specific details of how to report a vulnerability
+# Security Policy
+
+The Vectara trust and security center, including our security policy, can be found at
+[https://vectara.com/legal/security-at-vectara/](https://vectara.com/legal/security-at-vectara/).
+
+
+## Reporting a Vulnerability
+
+Please send security vulnerability reports to support@vectara.com.
