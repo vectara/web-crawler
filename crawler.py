@@ -4,6 +4,7 @@ import requests
 import os
 import argparse
 import time
+import feedparser
 
 from pyhtml2pdf import converter
 from usp.tree import sitemap_tree_for_homepage
@@ -49,18 +50,31 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int, idx_add
         crawl_url(url, crawl_id, customer_id, corpus_id, idx_address, True, filename)
     elif response.status_code != 200:
         logging.error("REST upload failed with code %d, reason %s, text %s",
-                       response.status_code,
-                       response.reason,
-                       response.text)
+                    response.status_code,
+                    response.reason,
+                    response.text)
         return response, False
     os.remove(filename)
     return response, True
+
+def crawl_rss(feed_url: str, crawl_id: str, customer_id: int, corpus_id: int, idx_address: str):
+    feed = feedparser.parse(feed_url)
+    for entry in feed['entries']:
+        try:
+            crawl_url(entry.link, crawl_id, customer_id, corpus_id, idx_address)
+        except KeyboardInterrupt:
+            raise
+        except:
+            logging.error("Error crawling %s", entry.link)
+    return
 
 def crawl_sitemap(homepage: str, crawl_id: str, customer_id: int, corpus_id: int, idx_address: str):
     tree = sitemap_tree_for_homepage(homepage)
     for page in tree.all_pages():
         try:
             crawl_url(page.url, crawl_id, customer_id, corpus_id, idx_address)
+        except KeyboardInterrupt:
+            raise
         except:
             logging.error("Error crawling %s", page.url)
     return
@@ -115,8 +129,16 @@ if __name__ == "__main__":
                                   args.customer_id,
                                   args.corpus_id,
                                   args.indexing_endpoint)
+            elif args.crawl_type == 'rss':
+                error, status = crawl_rss(args.url,
+                                  args.crawl_id,
+                                  args.customer_id,
+                                  args.corpus_id,
+                                  args.indexing_endpoint)
             elif args.crawl_type == 'recursive':
                 logging.error("Not yet implemented")
+            else:
+                logging.error("Provided crawl type is incorrect")
 
         else:
             logging.error("Could not generate an auth token. Please check your credentials.")
