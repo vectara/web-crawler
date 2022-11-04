@@ -5,6 +5,7 @@ import os
 import argparse
 import time
 import feedparser
+import re
 
 from bloom_filter import BloomFilter
 from selenium import webdriver
@@ -58,8 +59,13 @@ def _get_jwt_token(auth_url: str, appclient_id: str, appclient_secret: str):
     token = session.fetch_token(token_endpoint, grant_type="client_credentials")
     return token["access_token"]
 
-def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int, idx_address: str, retry: bool = False, prefetched_filename: str = None, install_driver: bool = True):
+def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
+              crawl_pattern: re, idx_address: str, retry: bool = False,
+              prefetched_filename: str = None, install_driver: bool = True):
     global token, appclient_id, appclient_secret
+
+    if crawl_pattern != None and not crawl_pattern.match(url):
+        return "Crawl pattern not matched", False
     
     filename = str(time.time()) + ".pdf"
     if retry == False or prefetched_filename != None:
@@ -76,14 +82,15 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int, idx_add
         "file": (f"{crawl_id}-{url}", open(filename, 'rb'), 'application/pdf'),
     }
     response = requests.post(
-        f"https://h.{idx_address}/upload?c={customer_id}&o={corpus_id}",
+        f"https://{idx_address}/upload?c={customer_id}&o={corpus_id}",
         files=files,
         verify=True,
         headers=post_headers)
 
     if response.status_code == 401 and retry == False:
         token = _get_jwt_token(auth_url, appclient_id, appclient_secret)
-        crawl_url(url, crawl_id, customer_id, corpus_id, idx_address, True, filename, install_driver)
+        crawl_url(url, crawl_id, customer_id, corpus_id, crawl_pattern,
+                  idx_address, True, filename, install_driver)
     elif response.status_code != 200:
         logging.error("REST upload failed with code %d, reason %s, text %s",
                     response.status_code,
@@ -93,28 +100,37 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int, idx_add
     os.remove(filename)
     return response, True
 
-def crawl_rss(feed_url: str, crawl_id: str, customer_id: int, corpus_id: int, idx_address: str, install_driver: bool = True):
+def crawl_rss(feed_url: str, crawl_id: str, customer_id: int, corpus_id: int,
+              crawl_pattern: re, idx_address: str, install_driver: bool = True):
     feed = feedparser.parse(feed_url)
     for entry in feed['entries']:
         try:
-            crawl_url(entry.link, crawl_id, customer_id, corpus_id, idx_address, install_driver=install_driver)
+            crawl_url(entry.link, crawl_id, customer_id, corpus_id,
+                      crawl_pattern, idx_address, install_driver=install_driver)
         except KeyboardInterrupt:
             raise
         except Exception as e:
             logging.error("Error crawling %s", entry.link)
     return
 
-def crawl_recursive(url: str, max_depth: int, crawl_id: str, customer_id: int, corpus_id: int, idx_address: str, current_depth: int = 1, install_driver: bool = True):
+def crawl_recursive(url: str, max_depth: int, crawl_id: str, customer_id: int,
+                    corpus_id: int, crawl_pattern: re, idx_address: str,
+                    current_depth: int = 1, install_driver: bool = True):
     global seen_pages
     try:
-        crawl_url(url, crawl_id, customer_id, corpus_id, idx_address, install_driver=install_driver)
+        crawl_url(url, crawl_id, customer_id, corpus_id, crawl_pattern,
+                  idx_address, install_driver=install_driver)
 
         if current_depth < max_depth:
             links = extract_links(url, install_driver=install_driver)
             for link in links:
-                if link not in seen_pages:
+                if (link not in seen_pages):
                     seen_pages.add(link)
-                    crawl_recursive(link, max_depth, crawl_id, customer_id, corpus_id, idx_address, current_depth+1, install_driver=install_driver)
+                    if crawl_pattern == None or crawl_pattern.match(link):
+                        crawl_recursive(link, max_depth, crawl_id, customer_id,
+                                        corpus_id, crawl_pattern, idx_address,
+                                        current_depth+1,
+                                        install_driver=install_driver)
         else:
             logging.info("Maximum depth of recursive crawl reached")
     except KeyboardInterrupt:
@@ -123,11 +139,14 @@ def crawl_recursive(url: str, max_depth: int, crawl_id: str, customer_id: int, c
         print(e)
         logging.error("Error crawling %s", url)
 
-def crawl_sitemap(homepage: str, crawl_id: str, customer_id: int, corpus_id: int, idx_address: str, install_driver: bool = True):
+def crawl_sitemap(homepage: str, crawl_id: str, customer_id: int,
+                  corpus_id: int, crawl_pattern: re, idx_address: str,
+                  install_driver: bool = True):
     tree = sitemap_tree_for_homepage(homepage)
     for page in tree.all_pages():
         try:
-            crawl_url(page.url, crawl_id, customer_id, corpus_id, idx_address, install_driver=install_driver)
+            crawl_url(page.url, crawl_id, customer_id, corpus_id, crawl_pattern,
+                      idx_address, install_driver=install_driver)
         except KeyboardInterrupt:
             raise
         except Exception as e:
@@ -141,9 +160,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vectara web crawler example")
 
     parser.add_argument("--url", help="The base URL to start crawling from.", required=True)
-    parser.add_argument("--crawl-type", help="Can be one of: single-page, sitemap, or recursive.", default="sitemap")
+    parser.add_argument("--crawl-type",
+                        help="Can be one of: single-page, sitemap, rss, or recursive.",
+                        choices=['sitemap', 'rss', 'recursive', 'single-page'],
+                        default="sitemap")
 
-    parser.add_argument("--depth", type=int, help="Maximum depth of pages to crawl", default=1)
+    parser.add_argument("--depth", type=int, help="Maximum depth of pages to crawl", default=3)
+    parser.add_argument("--crawl-pattern", help="Pattern to keep the crawl to")
 
     parser.add_argument("--crawl-id", help="ID for the crawl for filtering", default="")
 
@@ -154,7 +177,7 @@ if __name__ == "__main__":
                         help="Corpus ID to which data will be indexed and queried from.")
 
     parser.add_argument("--indexing-endpoint", help="The endpoint of indexing server.",
-                        default="indexing.vectara.io")
+                        default="api.vectara.io")
 
     parser.add_argument("--appclient-id", required=True, help="This appclient should have enough rights.")
     parser.add_argument("--appclient-secret", required=True)
@@ -175,12 +198,17 @@ if __name__ == "__main__":
         appclient_id = args.appclient_id
         appclient_secret = args.appclient_secret
         token = _get_jwt_token(auth_url, appclient_id, appclient_secret)
+
+        crawl_pattern = None
+        if args.crawl_pattern != None:
+            crawl_pattern = re.compile(args.crawl_pattern)
         
         if token:
             if args.crawl_type == 'single-page':
                 error, status = crawl_url(args.url,
                                   args.crawl_id,
                                   args.corpus_id,
+                                  crawl_pattern,
                                   args.indexing_endpoint,
                                   install_driver=args.install_chrome_driver)
             elif args.crawl_type == 'sitemap':
@@ -188,6 +216,7 @@ if __name__ == "__main__":
                               args.crawl_id,
                               args.customer_id,
                               args.corpus_id,
+                              crawl_pattern,
                               args.indexing_endpoint,
                               install_driver=args.install_chrome_driver)
             elif args.crawl_type == 'rss':
@@ -195,6 +224,7 @@ if __name__ == "__main__":
                           args.crawl_id,
                           args.customer_id,
                           args.corpus_id,
+                          crawl_pattern,
                           args.indexing_endpoint,
                           install_driver=args.install_chrome_driver)
             elif args.crawl_type == 'recursive':
@@ -203,10 +233,9 @@ if __name__ == "__main__":
                                 args.crawl_id,
                                 args.customer_id,
                                 args.corpus_id,
+                                crawl_pattern,
                                 args.indexing_endpoint,
                                 install_driver=args.install_chrome_driver)
-            else:
-                logging.error("Provided crawl type is incorrect")
 
         else:
             logging.error("Could not generate an auth token. Please check your credentials.")
