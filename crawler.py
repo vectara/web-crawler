@@ -6,6 +6,8 @@ import argparse
 import time
 import feedparser
 import re
+import subprocess
+import sys
 
 from bloom_filter import BloomFilter
 from selenium import webdriver
@@ -14,6 +16,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.expected_conditions import staleness_of
 from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import urlparse
 from selenium.webdriver.common.by import By
 
 from pyhtml2pdf import converter
@@ -47,7 +50,8 @@ def extract_links(url: str, timeout: int = 2, install_driver: bool = True):
         elems = driver.find_elements(By.XPATH, '//a[@href]')
         return map(lambda elem: elem.get_attribute("href"), elems)
     except Exception as e:
-        print(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        print(e, exc_type, exc_tb.tb_lineno)
         raise
     return
 
@@ -61,7 +65,8 @@ def _get_jwt_token(auth_url: str, appclient_id: str, appclient_secret: str):
 
 def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
               crawl_pattern: re, idx_address: str, retry: bool = False,
-              prefetched_filename: str = None, install_driver: bool = True):
+              prefetched_filename: str = None, pdf_driver: str = 'chrome',
+              install_chrome_driver: bool = True):
     global token, appclient_id, appclient_secret
 
     if crawl_pattern != None and not crawl_pattern.match(url):
@@ -70,17 +75,28 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
     filename = str(time.time()) + ".pdf"
     if retry == False or prefetched_filename != None:
         logging.info("Grabbing %s", url)
-        r = requests.get(url)
-        res = converter.convert(url, filename, install_driver=False)
+        # r = requests.get(url)
+        if pdf_driver == 'chrome':
+          res = converter.convert(url, filename,
+                                  install_driver=install_chrome_driver)
+        elif pdf_driver == 'wkhtmltopdf':
+          list_files = subprocess.run(["wkhtmltopdf", url, filename])
     else:
         filename = prefetched_filename
 
     post_headers = {
         "Authorization": f"Bearer {token}"
     }
-    files = {
-        "file": (f"{crawl_id}-{url}", open(filename, 'rb'), 'application/pdf'),
-    }
+    if pdf_driver == 'chrome':
+        files = {
+            "file": (f"{crawl_id}-{url}", open(filename, 'rb'), 'application/pdf'),
+        }
+    elif pdf_driver == 'wkhtmltopdf':
+        url_obj = urlparse(url)
+        url_no_fragment=url_obj._replace(fragment="").geturl()
+        files = {
+            "file": (f"{crawl_id}-{url_no_fragment}", open(filename, 'rb'), 'application/pdf'),
+        }
     response = requests.post(
         f"https://{idx_address}/upload?c={customer_id}&o={corpus_id}",
         files=files,
@@ -90,23 +106,27 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
     if response.status_code == 401 and retry == False:
         token = _get_jwt_token(auth_url, appclient_id, appclient_secret)
         crawl_url(url, crawl_id, customer_id, corpus_id, crawl_pattern,
-                  idx_address, True, filename, install_driver)
+                  idx_address, True, filename, pdf_driver,
+                  install_chrome_driver=install_chrome_driver)
     elif response.status_code != 200:
         logging.error("REST upload failed with code %d, reason %s, text %s",
                     response.status_code,
                     response.reason,
                     response.text)
+        os.remove(filename)
         return response, False
     os.remove(filename)
     return response, True
 
 def crawl_rss(feed_url: str, crawl_id: str, customer_id: int, corpus_id: int,
-              crawl_pattern: re, idx_address: str, install_driver: bool = True):
+              crawl_pattern: re, idx_address: str, pdf_driver: str = 'chrome',
+              install_chrome_driver: bool = True):
     feed = feedparser.parse(feed_url)
     for entry in feed['entries']:
         try:
             crawl_url(entry.link, crawl_id, customer_id, corpus_id,
-                      crawl_pattern, idx_address, install_driver=install_driver)
+                      crawl_pattern, idx_address, pdf_driver=pdf_driver,
+                      install_chrome_driver=install_chrome_driver)
         except KeyboardInterrupt:
             raise
         except Exception as e:
@@ -115,38 +135,43 @@ def crawl_rss(feed_url: str, crawl_id: str, customer_id: int, corpus_id: int,
 
 def crawl_recursive(url: str, max_depth: int, crawl_id: str, customer_id: int,
                     corpus_id: int, crawl_pattern: re, idx_address: str,
-                    current_depth: int = 1, install_driver: bool = True):
+                    current_depth: int = 1, pdf_driver: str = 'chrome',
+                    install_chrome_driver: bool = False):
     global seen_pages
     try:
         crawl_url(url, crawl_id, customer_id, corpus_id, crawl_pattern,
-                  idx_address, install_driver=install_driver)
+                  idx_address, pdf_driver=pdf_driver,
+                  install_chrome_driver=install_chrome_driver)
 
         if current_depth < max_depth:
-            links = extract_links(url, install_driver=install_driver)
+            links = extract_links(url, install_driver=install_chrome_driver)
             for link in links:
-                if (link not in seen_pages):
+                if (link != None and seen_pages != None and link not in seen_pages):
                     seen_pages.add(link)
                     if crawl_pattern == None or crawl_pattern.match(link):
                         crawl_recursive(link, max_depth, crawl_id, customer_id,
                                         corpus_id, crawl_pattern, idx_address,
                                         current_depth+1,
-                                        install_driver=install_driver)
+                                        pdf_driver=pdf_driver,
+                                        install_chrome_driver=install_chrome_driver)
         else:
             logging.info("Maximum depth of recursive crawl reached")
     except KeyboardInterrupt:
         raise
     except Exception as e:
-        print(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        print(e, exc_type, exc_tb.tb_lineno)
         logging.error("Error crawling %s", url)
 
 def crawl_sitemap(homepage: str, crawl_id: str, customer_id: int,
                   corpus_id: int, crawl_pattern: re, idx_address: str,
-                  install_driver: bool = True):
+                  pdf_driver: str = 'chrome', install_chrome_driver: bool = True):
     tree = sitemap_tree_for_homepage(homepage)
     for page in tree.all_pages():
         try:
             crawl_url(page.url, crawl_id, customer_id, corpus_id, crawl_pattern,
-                      idx_address, install_driver=install_driver)
+                      idx_address, pdf_driver=pdf_driver,
+                      install_chrome_driver=install_chrome_driver)
         except KeyboardInterrupt:
             raise
         except Exception as e:
@@ -183,10 +208,15 @@ if __name__ == "__main__":
     parser.add_argument("--appclient-secret", required=True)
     parser.add_argument("--auth-url", help="The auth url for this customer.",
                         default="")
+
     parser.add_argument("--install-chrome-driver",
                         action=argparse.BooleanOptionalAction,
-                        help="Whether the crawler should try to install the Chrome Driver for Selenium",
+                        help="Whether the crawler should try to install the Chrome Driver for exracting links",
                         default=True)
+    parser.add_argument("--pdf-driver",
+                        choices=['chrome', 'wkhtmltopdf'],
+                        help="What software to use to convert webpages to PDFs",
+                        default='chrome')
 
     args = parser.parse_args()
 
@@ -207,10 +237,13 @@ if __name__ == "__main__":
             if args.crawl_type == 'single-page':
                 error, status = crawl_url(args.url,
                                   args.crawl_id,
+                                  args.customer_id,
                                   args.corpus_id,
                                   crawl_pattern,
+                                  None,
                                   args.indexing_endpoint,
-                                  install_driver=args.install_chrome_driver)
+                                  pdf_driver=args.pdf_driver,
+                                  install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'sitemap':
                 crawl_sitemap(args.url,
                               args.crawl_id,
@@ -218,7 +251,8 @@ if __name__ == "__main__":
                               args.corpus_id,
                               crawl_pattern,
                               args.indexing_endpoint,
-                              install_driver=args.install_chrome_driver)
+                              pdf_driver=args.pdf_driver,
+                              install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'rss':
                 crawl_rss(args.url,
                           args.crawl_id,
@@ -226,7 +260,8 @@ if __name__ == "__main__":
                           args.corpus_id,
                           crawl_pattern,
                           args.indexing_endpoint,
-                          install_driver=args.install_chrome_driver)
+                          pdf_driver=args.pdf_driver,
+                          install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'recursive':
                 crawl_recursive(args.url,
                                 args.depth,
@@ -235,7 +270,8 @@ if __name__ == "__main__":
                                 args.corpus_id,
                                 crawl_pattern,
                                 args.indexing_endpoint,
-                                install_driver=args.install_chrome_driver)
+                                pdf_driver=args.pdf_driver,
+                                install_chrome_driver=args.install_chrome_driver)
 
         else:
             logging.error("Could not generate an auth token. Please check your credentials.")
