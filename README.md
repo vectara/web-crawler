@@ -65,6 +65,7 @@ Parameters are:
 | pdf-driver                 | No        | What to convert pages to PDFs. chrome or wkhtmltopdf             | chrome
 | (no-)install-chrome-driver | No        | Whether or not to install the Chrome driver for extracting links | --install-chrome-driver
 | depth                      | No        | Maximum depth to discover and crawl links                        | 3
+| crawl-pattern              | No        | Optional regular expression to stick the crawl to                | .* (all URLs)
 | customer-id                | Yes       | Your Vectara customer ID                                         | N/A
 | corpus-id                  | Yes       | Your Vectara corpus ID                                           | N/A
 | appclient-id               | Yes       | OAuth 2.0 client ID to index content                             | N/A
