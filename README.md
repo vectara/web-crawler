@@ -12,10 +12,24 @@ For the former, provide the crawler with a URL and it will ingest it into
 Vectara.  For the latter, provide the crawler with a root page, and it will
 retrieve the sitemap(s) and index all links from the sitemap.
 
-## Setup and Requirements
+## Dependencies
 This crawler has a minimum set of python dependencies, as outlined in
 [requirements.txt](requirements.txt).
 
+If you're using a fresh MacOS laptop, you'll likely need to install the following:
+```
+pip3 install requests
+pip3 install feedparser
+pip3 install bloom_filter
+pip3 install selenium
+pip3 install webdriver_manager
+pip3 install pyhtml2pdf
+pip3 install usp
+pip3 install ultimate_sitemap_parser
+pip3 install authlib
+```
+
+## Setup and Requirements
 The crawler generates PDFs for each page to upload to Vectara's
 [file upload API](https://docs.vectara.com/docs/indexing-apis/file-upload).
 The crawler relies on [headless browsers](https://en.wikipedia.org/wiki/Headless_browser)
@@ -73,6 +87,13 @@ Parameters are:
 | customer-id                | Yes       | Your Vectara customer ID                                         | N/A
 | auth-url                   | No        | OAuth2 authentication URL                                        | Defined by your account
 | indexing-endpoint          | No        | OAuth2 authentication URL                                        | api.vectara.com
+
+### With staging
+To index documents on the staging server, you'll need to set these parameters:
+
+```sh
+--auth-url https://vectara-prod-{CUSTOMER_ID}.auth.us-west-2.amazoncognito.com --indexing-endpoint h.indexing.vectara.dev
+```
 
 ## License
 This code is licensed Apache 2.0.  For more details, see the [license file](LICENSE)
