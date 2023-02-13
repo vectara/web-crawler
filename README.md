@@ -87,14 +87,6 @@ Parameters are:
 |          auth-url          |    No     |                    OAuth2 authentication URL                     | Defined by your account |
 |     indexing-endpoint      |    No     |                    OAuth2 authentication URL                     |     api.vectara.com     |
 
-### With staging
-
-To index documents on the staging server, you'll need to set these parameters:
-
-```sh
---auth-url https://vectara-prod-{CUSTOMER_ID}.auth.us-west-2.amazoncognito.com --indexing-endpoint h.indexing.vectara.dev
-```
-
 ## License
 
 This code is licensed Apache 2.0. For more details, see the [license file](LICENSE)
