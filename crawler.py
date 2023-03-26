@@ -97,9 +97,16 @@ def crawl_url(url: str, crawl_id: str, customer_id: int, corpus_id: int,
         files = {
             "file": (f"{crawl_id}-{url_no_fragment}", open(filename, 'rb'), 'application/pdf'),
         }
+    meta = {
+        "doc_metadata": json.dumps({
+            "url": url,
+            "crawl_id": crawl_id
+        })
+    }
     response = requests.post(
         f"https://{idx_address}/upload?c={customer_id}&o={corpus_id}",
         files=files,
+        data=meta,
         verify=True,
         headers=post_headers)
 
@@ -235,41 +242,42 @@ if __name__ == "__main__":
         
         if token:
             if args.crawl_type == 'single-page':
-                error, status = crawl_url(args.url,
-                                  args.crawl_id,
-                                  args.customer_id,
-                                  args.corpus_id,
-                                  crawl_pattern,
-                                  None,
-                                  args.indexing_endpoint,
+                error, status = crawl_url(url=args.url,
+                                  crawl_id=args.crawl_id,
+                                  customer_id=args.customer_id,
+                                  corpus_id=args.corpus_id,
+                                  crawl_pattern=crawl_pattern,
+                                  idx_address=args.indexing_endpoint,
+                                  retry=False,
+                                  prefetched_filename=None,
                                   pdf_driver=args.pdf_driver,
                                   install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'sitemap':
-                crawl_sitemap(args.url,
-                              args.crawl_id,
-                              args.customer_id,
-                              args.corpus_id,
-                              crawl_pattern,
-                              args.indexing_endpoint,
+                crawl_sitemap(url=args.url,
+                              crawl_id=args.crawl_id,
+                              customer_id=args.customer_id,
+                              corpus_id=args.corpus_id,
+                              crawl_pattern=crawl_pattern,
+                              idx_address=args.indexing_endpoint,
                               pdf_driver=args.pdf_driver,
                               install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'rss':
-                crawl_rss(args.url,
-                          args.crawl_id,
-                          args.customer_id,
-                          args.corpus_id,
-                          crawl_pattern,
-                          args.indexing_endpoint,
+                crawl_rss(url=args.url,
+                          crawl_id=args.crawl_id,
+                          customer_id=args.customer_id,
+                          corpus_id=args.corpus_id,
+                          crawl_pattern=crawl_pattern,
+                          idx_address=args.indexing_endpoint,
                           pdf_driver=args.pdf_driver,
                           install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'recursive':
-                crawl_recursive(args.url,
-                                args.depth,
-                                args.crawl_id,
-                                args.customer_id,
-                                args.corpus_id,
-                                crawl_pattern,
-                                args.indexing_endpoint,
+                crawl_recursive(url=args.url,
+                                max_depth=args.depth,
+                                crawl_id=args.crawl_id,
+                                customer_id=args.customer_id,
+                                corpus_id=args.corpus_id,
+                                crawl_pattern=crawl_pattern,
+                                idx_address=args.indexing_endpoint,
                                 pdf_driver=args.pdf_driver,
                                 install_chrome_driver=args.install_chrome_driver)
 
