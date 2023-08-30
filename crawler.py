@@ -16,6 +16,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.expected_conditions import staleness_of
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service as ChromeService
 from urllib.parse import urlparse
 from selenium.webdriver.common.by import By
 
@@ -40,9 +41,11 @@ def extract_links(url: str, timeout: int = 2, install_driver: bool = True):
     webdriver_options.experimental_options['prefs'] = webdriver_prefs
 
     if install_driver:
-        driver = webdriver.Chrome(ChromeDriverManager().install(), options=webdriver_options)
+        service = ChromeService()
+        driver = webdriver.Chrome(service=service, options=webdriver_options)
     else:
         driver = webdriver.Chrome(options=webdriver_options)
+
     driver.get(url)
     try:
         WebDriverWait(driver, timeout).until(staleness_of(driver.find_element(by=By.TAG_NAME, value='html')))
