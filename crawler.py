@@ -253,7 +253,7 @@ if __name__ == "__main__":
                                   pdf_driver=args.pdf_driver,
                                   install_chrome_driver=args.install_chrome_driver)
             elif args.crawl_type == 'sitemap':
-                crawl_sitemap(url=args.url,
+                crawl_sitemap(homepage=args.url,
                               crawl_id=args.crawl_id,
                               customer_id=args.customer_id,
                               corpus_id=args.corpus_id,
